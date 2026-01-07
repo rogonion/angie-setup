@@ -1,0 +1,81 @@
+ProjectName: "angie-setup"
+BaseImage: "registry.opensuse.org/opensuse/leap:16.0"
+
+Buildah:
+  Path: "buildah"
+
+Angie:
+  Version: "1.11.1"
+  SourceUrl: "https://download.angie.software/files/angie-1.11.1.tar.gz"
+  Prefix: "/usr/local/angie"
+
+  Build:
+    Dependencies:
+      # --- Compilation Tools ---
+      - "gcc"            # GNU C Compiler: Required to compile the source code.
+      - "make"           # Build automation tool: Runs the Makefiles to build the binary.
+      - "findutils"      # Utilities like 'find': Used during cleanup steps.
+      - "which"          # Helper to locate binaries.
+      - "tar"            # Archiving tool: Extracts the source code.
+      - "gzip"           # Compression tool: Decompresses the source tarball.
+      - "curl"           # Network tool: Downloads the source code.
+
+      # --- Library Headers (Development Files) ---
+      - "pcre2-devel"    # PCRE2 Headers: Required for compiling Regex support (routing rules).
+      - "zlib-devel"     # Zlib Headers: Required for Gzip compression support.
+      - "openssl-devel"  # OpenSSL Headers: Required for compiling SSL/TLS/QUIC support.
+
+    Flags:
+      # --- Performance & Core Architecture ---
+      - "--with-threads"               # Enables thread pools. Prevents long file operations from blocking the event loop.
+      - "--with-file-aio"              # Enables Asynchronous I/O (Linux native AIO). Improves disk read performance.
+      - "--with-pcre"                  # Enforces usage of the PCRE library for Regex.
+      - "--with-pcre-jit"              # Enables Just-In-Time compilation for Regex. Massive speedup for complex routing rules.
+
+      # --- Protocols (The "Yes" List) ---
+      - "--with-http_ssl_module"       # Enables HTTPS (TLS) support.
+      - "--with-http_v2_module"        # Enables HTTP/2 (Multiplexing, binary framing).
+      - "--with-http_v3_module"        # Enables HTTP/3 (QUIC/UDP). Requires OpenSSL with QUIC APIs.
+      - "--with-stream"                # Enables Layer 4 (TCP/UDP) Proxying. Critical for Pulsar/DB traffic.
+      - "--with-stream_ssl_module"     # Enables SSL/TLS termination for TCP streams (e.g., Secure Pulsar).
+      - "--with-stream_realip_module"  # Allows extracting Client IP from the PROXY protocol in TCP streams.
+
+      # --- Essential Features ---
+      - "--with-http_realip_module"    # Reads X-Forwarded-For / PROXY headers to see the true Client IP.
+      - "--with-http_gzip_static_module" # Serve pre-compressed .gz files directly (saves CPU).
+      - "--with-http_stub_status_module" # Enables /status endpoint for metrics (Active connections, requests/sec).
+      - "--with-http_acme_module" # Automatically fetch and renew certificates from Let's Encrypt.
+
+      # --- Size Reduction (The "No" List) ---
+      # Mail Proxy: ability to proxy SMTP/IMAP/POP3.
+#      - "--with-mail"
+
+      # Application Protocols: Removes native support for these backend types.
+      # (You can still proxy to them if there is an intermediate HTTP server).
+      - "--without-http_scgi_module"     # Simple Common Gateway Interface (Python/Ruby legacy).
+      - "--without-http_uwsgi_module"    # uWSGI Protocol (Python direct connection).
+      - "--without-http_fastcgi_module"  # FastCGI Protocol (PHP-FPM direct connection).
+      #      - "--without-http_grpc_module"     # gRPC Protocol (Go/Java direct gRPC proxing). Remove if using HTTP/2 proxying instead.
+
+      # Non-Essential Features:
+      - "--without-http_autoindex_module"     # Removes directory listing generation (Security hardening).
+      - "--without-http_geo_module"           # Removes IP-based geolocation logic.
+      - "--without-http_split_clients_module" # Removes A/B testing logic (Splitting traffic by %).
+      - "--without-http_ssi_module"           # Removes Server Side Includes (modifying HTML on the fly).
+      - "--without-http_empty_gif_module"     # Removes the 1x1 pixel tracking GIF generator.
+
+  Runtime:
+    Dependencies:
+      # --- Runtime Libraries ---
+      # These must be present in the final image for the compiled binary to run.
+      - "shadow"         # For user management (useradd/groupadd).
+      - "findutils"      # For file management scripts.
+      - "libatomic1"     # Atomic operations library (Required by Nginx/Angie on some architectures).
+      - "openssl-3"      # The actual OpenSSL crypto libraries.
+      - "libz1"          # Zlib compression library.
+      - "libpcre2-8-0"   # PCRE2 Regex library.
+      - "timezone"       # Timezone data (Required for accurate timestamps in access logs).
+
+    Resources: "resources" # Directory containing entrypoint.sh and angie.conf
+    Uid: 1004               # UID to run the process as (Rootless)
+    Gid: 1004               # GID
