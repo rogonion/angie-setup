@@ -1,5 +1,8 @@
+# Build configuration using opensuse leap as the base image
+
 ProjectName: "angie-setup"
 BaseImage: "registry.opensuse.org/opensuse/leap:16.0"
+Distro: "suse"
 
 Buildah:
   Path: "buildah"

@@ -67,7 +67,7 @@ Setup python virtual environment and install dependencies:
 ```shell
 TASKFILE_BINARY="./taskw"
 
-$TASKFILE_BINARY init
+$TASKFILE_BINARY deps
 ```
 
 View CLI tool options and build help:

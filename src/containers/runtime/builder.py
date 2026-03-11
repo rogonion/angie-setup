@@ -1,12 +1,16 @@
 from pathlib import Path
-from angie_setup.core import BaseBuilder, BuildSpec, prune_cache_images, BuildahContainer
+from src.core import BaseBuilder, BuildSpec, prune_cache_images, BuildahContainer, init_base_distro
 
 
 class RuntimeBuilder(BaseBuilder):
-    def __init__(self, config: BuildSpec, cache_prefix: str = "", image_name: str = "", image_tag: str = ""):
+    def __init__(self, config: BuildSpec, cache_prefix: str = "", image_name: str = "", image_tag: str = "",
+                 remove_package_manager: bool = True,
+                 squash: bool = True):
         super().__init__(config, cache_prefix)
         self.image_name = image_name if image_name else f"{self.config.ProjectName}-runtime"
         self.image_tag = image_tag if image_tag else self.config.Angie.Version
+        self.remove_package_manager = remove_package_manager
+        self.squash = squash
 
     def _init_cache_prefix(self, cache_prefix: str):
         self.cache_prefix = cache_prefix if cache_prefix else f"{self.config.ProjectName}/cache/runtime/{self.config.Angie.Version}"
@@ -22,6 +26,8 @@ class RuntimeBuilder(BaseBuilder):
                 config=self.config,
                 cache_prefix=self.cache_prefix
         ) as container:
+            base_distro = init_base_distro(self.config.Distro, container)
+
             self.log(f"[bold blue]Step {current_step}[/bold blue]: Retrieving angie artifacts")
             container.copy_container_current(
                 f"{self.config.ProjectName}-core:{self.config.Angie.Version}",
@@ -31,15 +37,12 @@ class RuntimeBuilder(BaseBuilder):
 
             current_step += 1
             self.log(f"[bold blue]Step {current_step}[/bold blue]: Installing angie runtime dependencies")
-            container.run_cached(
-                command=[
-                    "sh", "-c",
-                    f"zypper --non-interactive refresh && "
-                    f"zypper --non-interactive install " + " ".join(self.config.Angie.Runtime.Dependencies)
-                ],
+            base_distro.refresh_package_repository()
+            base_distro.install_packages(
+                packages=self.config.Angie.Runtime.Dependencies,
                 extra_cache_keys={"step": "deps", "packages": sorted(self.config.Angie.Runtime.Dependencies)}
             )
-            container.run(command=["zypper", "clean", "--all"])
+            base_distro.clean_package_repository_cache()
 
             current_step += 1
             self.log(f"[bold blue]Step {current_step}[/bold blue]: Setting up system user")
@@ -91,6 +94,12 @@ class RuntimeBuilder(BaseBuilder):
                                           "/usr/local/bin/entrypoint.sh")
             container.run(command=["chmod", "+x", "/usr/local/bin/entrypoint.sh"])
 
+            if self.remove_package_manager:
+                if not self.squash:
+                    self.log("[bold yellow]Warning[/bold yellow]: Please enable squashing to reduce image size.")
+                self.log("[blue dim]Removing package manager[/blue dim]")
+                base_distro.remove_package_manager()
+
             container.configure([
                 ("--entrypoint", '["/usr/local/bin/entrypoint.sh"]'),
                 ("--cmd", '["angie"]'),
@@ -108,7 +117,7 @@ class RuntimeBuilder(BaseBuilder):
                 ("--label", f"org.angie.prefix={self.config.Angie.Prefix}"),
             ])
             image_name_tag = self.image_name + ":" + self.image_tag
-            container.commit(image_name_tag)
+            container.commit(image_name_tag, squash=self.squash)
 
             self.log(f"Image tagged as: [green]{image_name_tag}[/green]")
 
